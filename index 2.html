@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Transcriber">
+<title>Voice Transcriber</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --surface2: #1e1e1e;
+    --border: rgba(255,255,255,0.08); --text: #f0f0f0; --muted: #666;
+    --accent: #0a84ff; --safe-top: env(safe-area-inset-top,20px); --safe-bottom: env(safe-area-inset-bottom,20px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Display', sans-serif; }
+  body { display: flex; flex-direction: column; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); overflow: hidden; }
+
+  header { padding: 16px 24px 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+
+  .transcript-box {
+    margin: 8px 16px; background: var(--surface);
+    border: 0.5px solid var(--border); border-radius: 16px;
+    padding: 16px; font-size: 17px; line-height: 1.6;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    color: var(--text); height: 130px; flex-shrink: 0;
+  }
+  .interim { color: var(--muted); }
+  .placeholder { color: var(--muted); font-size: 15px; }
+
+  .controls { padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .rec-btn {
+    width: 68px; height: 68px; border-radius: 50%; border: 3px solid var(--accent);
+    background: transparent; cursor: pointer; margin: 0 auto;
+    display: flex; align-items: center; justify-content: center; transition: transform 0.12s;
+  }
+  .rec-btn:active { transform: scale(0.93); }
+  .rec-btn .inner { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); transition: border-radius 0.2s, width 0.2s, height 0.2s; }
+  .rec-btn.recording .inner { border-radius: 6px; width: 22px; height: 22px; }
+  .rec-btn.recording { background: rgba(10,132,255,0.15); }
+  .status { text-align: center; font-size: 13px; color: var(--muted); min-height: 18px; }
+  .status.live { color: var(--accent); }
+  .action-btns { display: flex; gap: 10px; }
+  .act-btn {
+    flex: 1; padding: 10px; border-radius: 12px; border: none;
+    background: var(--surface2); color: var(--text); font-size: 14px;
+    cursor: pointer; transition: opacity 0.12s;
+  }
+  .act-btn:active { opacity: 0.6; }
+  .act-btn:disabled { opacity: 0.3; }
+
+  .divider { display: flex; align-items: center; gap: 10px; padding: 4px 16px; flex-shrink: 0; }
+  .divider span { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 0.5px; background: var(--border); }
+
+  .saved-list {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 4px 16px 16px;
+  }
+  .empty-saved { text-align: center; padding: 24px; font-size: 14px; color: var(--muted); }
+
+  .saved-item {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: 14px; padding: 12px 14px; margin-bottom: 8px;
+  }
+  .saved-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .saved-time { font-size: 12px; color: var(--muted); }
+  .saved-actions { display: flex; gap: 8px; }
+  .icon-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 2px 4px; }
+  .saved-text { font-size: 15px; line-height: 1.5; color: var(--text); }
+
+  .err-banner {
+    margin: 0 16px 8px; padding: 12px 16px; border-radius: 12px;
+    background: rgba(255,59,48,0.12); border: 0.5px solid rgba(255,59,48,0.3);
+    font-size: 13px; color: #ff6b63; display: none; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Transcriber</h1>
+  <span id="wordCount" style="font-size:13px;color:var(--muted)">0 words</span>
+</header>
+
+<div class="transcript-box" id="transcriptBox">
+  <span class="placeholder" id="placeholder">Tap the button and start speaking…</span>
+  <span id="finalText"></span>
+  <span class="interim" id="interimText"></span>
+</div>
+
+<div class="err-banner" id="errBanner">Speech recognition isn't supported. Please use Safari on iOS.</div>
+
+<div class="controls">
+  <div class="status" id="statusLabel">Tap to start</div>
+  <button class="rec-btn" id="recBtn" onclick="toggleRecording()">
+    <div class="inner"></div>
+  </button>
+  <div class="action-btns">
+    <button class="act-btn" id="saveBtn" onclick="saveTranscript()" disabled>💾 Save</button>
+    <button class="act-btn" id="copyBtn" onclick="copyText()" disabled>📋 Copy</button>
+    <button class="act-btn" id="clearBtn" onclick="clearText()" disabled>✕ Clear</button>
+  </div>
+</div>
+
+<div class="divider"><span>Saved recordings</span></div>
+
+<div class="saved-list" id="savedList">
+  <div class="empty-saved" id="emptySaved">No saved recordings yet</div>
+</div>
+
+<script>
+let recognition = null, isRecording = false, finalTranscript = '';
+let savedRecordings = JSON.parse(localStorage.getItem('transcripts') || '[]');
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (!SpeechRecognition) {
+  document.getElementById('errBanner').style.display = 'block';
+  document.getElementById('recBtn').disabled = true;
+} else {
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-GB';
+
+  recognition.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + ' ';
+      else interim += e.results[i][0].transcript;
+    }
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('finalText').textContent = finalTranscript;
+    document.getElementById('interimText').textContent = interim;
+    updateWordCount();
+    updateButtons();
+    const box = document.getElementById('transcriptBox');
+    box.scrollTop = box.scrollHeight;
+  };
+
+  recognition.onerror = e => {
+    if (e.error === 'not-allowed') {
+      document.getElementById('errBanner').textContent = 'Microphone access denied. Please allow it in Settings > Safari.';
+      document.getElementById('errBanner').style.display = 'block';
+    }
+    stopRecording();
+  };
+
+  recognition.onend = () => { if (isRecording) recognition.start(); };
+}
+
+function toggleRecording() {
+  if (!recognition) return;
+  isRecording ? stopRecording() : startRecording();
+}
+
+function startRecording() {
+  recognition.start();
+  isRecording = true;
+  document.getElementById('recBtn').classList.add('recording');
+  document.getElementById('statusLabel').textContent = 'Listening…';
+  document.getElementById('statusLabel').className = 'status live';
+}
+
+function stopRecording() {
+  recognition.stop();
+  isRecording = false;
+  document.getElementById('recBtn').classList.remove('recording');
+  document.getElementById('statusLabel').textContent = 'Tap to start';
+  document.getElementById('statusLabel').className = 'status';
+  document.getElementById('interimText').textContent = '';
+}
+
+function saveTranscript() {
+  if (!finalTranscript.trim()) return;
+  const entry = {
+    id: Date.now(),
+    text: finalTranscript.trim(),
+    time: new Date().toLocaleString('en-GB', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+  };
+  savedRecordings.unshift(entry);
+  localStorage.setItem('transcripts', JSON.stringify(savedRecordings));
+  renderSaved();
+  clearText();
+  document.getElementById('saveBtn').textContent = '✓ Saved!';
+  setTimeout(() => document.getElementById('saveBtn').textContent = '💾 Save', 1500);
+}
+
+function deleteEntry(id) {
+  savedRecordings = savedRecordings.filter(r => r.id !== id);
+  localStorage.setItem('transcripts', JSON.stringify(savedRecordings));
+  renderSaved();
+}
+
+function copyEntry(text) {
+  navigator.clipboard.writeText(text);
+}
+
+function copyText() {
+  navigator.clipboard.writeText(finalTranscript.trim()).then(() => {
+    document.getElementById('copyBtn').textContent = '✓ Copied!';
+    setTimeout(() => document.getElementById('copyBtn').textContent = '📋 Copy', 2000);
+  });
+}
+
+function clearText() {
+  finalTranscript = '';
+  document.getElementById('finalText').textContent = '';
+  document.getElementById('interimText').textContent = '';
+  document.getElementById('placeholder').style.display = 'inline';
+  updateWordCount();
+  updateButtons();
+}
+
+function updateWordCount() {
+  const words = finalTranscript.trim().split(/\s+/).filter(w => w).length;
+  document.getElementById('wordCount').textContent = words + (words === 1 ? ' word' : ' words');
+}
+
+function updateButtons() {
+  const has = finalTranscript.trim().length > 0;
+  document.getElementById('saveBtn').disabled = !has;
+  document.getElementById('copyBtn').disabled = !has;
+  document.getElementById('clearBtn').disabled = !has;
+}
+
+function renderSaved() {
+  const el = document.getElementById('savedList');
+  const empty = document.getElementById('emptySaved');
+  if (!savedRecordings.length) {
+    el.innerHTML = '<div class="empty-saved">No saved recordings yet</div>';
+    return;
+  }
+  el.innerHTML = savedRecordings.map(r => `
+    <div class="saved-item">
+      <div class="saved-meta">
+        <span class="saved-time">${r.time}</span>
+        <div class="saved-actions">
+          <button class="icon-btn" onclick="copyEntry(${JSON.stringify(r.text)})" title="Copy">📋</button>
+          <button class="icon-btn" onclick="deleteEntry(${r.id})" title="Delete">🗑️</button>
+        </div>
+      </div>
+      <div class="saved-text">${r.text}</div>
+    </div>
+  `).join('');
+}
+
+renderSaved();
+</script>
+</body>
+</html>
